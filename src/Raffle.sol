@@ -31,15 +31,21 @@ pragma solidity ^0.8.18;
  * @dev Implements Chainlink VRFv2
  */
 
-contract Raffle {
+import {VRFCoordinatorV2Interface} from "@chainlink/contracts/src/v0.8/interfaces/VRFCoordinatorV2Interface.sol";
+import {VRFConsumerBaseV2} from "@chainlink/contracts/src/v0.8/VRFConsumerBaseV2.sol";
 
+/**
+ * @dev VRFConsumerBaseV2 needs to be instantiated by passing it the address of the vrfCoordinator
+ */
+contract Raffle is VRFConsumerBaseV2 {
     /* Errors */
     // Best practice to name errors is to prefix the error with the name of the contract, then 2 underscores and the error name
     error Raffle__NotEnoughEthSent();
     error Raffle__NotEnoughTimePassed();
 
     /* State variables */
-    uint256 private constant REQUEST_CONFIRMATION = 3;
+    uint16 private constant REQUEST_CONFIRMATION = 3;
+    uint32 private constant NUM_WORDS = 1;
 
     /* Immutable variables */
 
@@ -50,20 +56,24 @@ contract Raffle {
     /**@dev i_interval stores duration of the lottery in seconds */
     uint256 private immutable i_interval;
 
-    uint256 private immutable i_vrfCoordinator;
-
-    // Address of the vrf Coordinator, is different for each chain
+    /**
+     * @dev we need to instantiate a vrfCoordinator using the interface VRFCoordinatorV2Interface, provided by chainlink contracts
+     * Address of the vrf Coordinator, is different for each chain
+     */
+    VRFCoordinatorV2Interface private immutable i_vrfCoordinator;
 
     /**
      * @dev In Chainlink documentation, gasLane corresponds to Key Hash.
      * This is used to specify the gas price for fulfilling requests.
      */
-    uint256 private immutable i_gasLane;
+    bytes32 private immutable i_gasLane;
 
     /**
-    * @dev Subscribe to Chainlink VRF in order to get one
-    */
+     * @dev Subscribe to Chainlink VRF in order to get one
+     */
     uint64 private immutable i_subscriptionId;
+
+    uint32 private immutable i_callbackGasLimit;
 
     uint256 private s_lastTimeStamp;
 
@@ -81,13 +91,14 @@ contract Raffle {
         bytes32 gasLane,
         uint64 subscriptionId,
         uint32 callbackGasLimit
-    ) {
+    ) VRFConsumerBaseV2(vrfCoordinator) {
         i_entranceFee = entranceFee;
         /**@dev i_interval must be in seconds for coherence with block.timestamp */
         i_interval = interval;
-        i_vrfCoordinator = vrfCoordinator;
+        i_vrfCoordinator = VRFCoordinatorV2Interface(vrfCoordinator);
         i_gasLane = gasLane;
         i_subscriptionId = subscriptionId;
+        i_callbackGasLimit = callbackGasLimit;
 
         // We want to have a timestamp at contract deployement time (in seconds)
         s_lastTimeStamp = block.timestamp;
@@ -127,9 +138,19 @@ contract Raffle {
             i_gasLane,
             i_subscriptionId,
             REQUEST_CONFIRMATION,
-            callbackGasLimit,
-            numWords
+            i_callbackGasLimit,
+            NUM_WORDS
         );
+    }
+
+    function fulfillRandomWords(
+        uint256 _requestId,
+        uint256[] memory _randomWords
+    ) internal override {
+        require(s_requests[_requestId].exists, "request not found");
+        s_requests[_requestId].fulfilled = true;
+        s_requests[_requestId].randomWords = _randomWords;
+        emit RequestFulfilled(_requestId, _randomWords);
     }
 
     /** Getters */
