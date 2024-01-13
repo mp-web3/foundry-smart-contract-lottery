@@ -108,7 +108,7 @@ contract Raffle is VRFConsumerBaseV2 {
         i_gasLane = gasLane;
         i_subscriptionId = subscriptionId;
         i_callbackGasLimit = callbackGasLimit;
-        
+
         s_raffleState = RaffleState.OPEN;
         // We want to have a timestamp at contract deployement time (in seconds)
         s_lastTimeStamp = block.timestamp;
@@ -123,13 +123,29 @@ contract Raffle is VRFConsumerBaseV2 {
         if (msg.value < i_entranceFee) {
             revert Raffle__NotEnoughEthSent();
         }
-        if (s_raffleState != RaffleState.OPEN ) {
+        if (s_raffleState != RaffleState.OPEN) {
             revert Raffle__RaffleNotOpen();
         }
 
         s_players.push(payable(msg.sender));
         // We emitt EnteredRaffle event each time a new player is pushed into s_players array
         emit EnteredRaffle(msg.sender);
+    }
+
+    /**
+     * @dev This is the function that the Chainlink Automation nodes call
+     * to see if it's time to perform an upkeep
+     * The following should be true for this to return true: 
+     * 1. The time interval has passed between raffle runs
+     * 2. The raffle is in the OPEN state 
+     * 3. The contract has ETH (aka, players)
+     * 4. (Implicit) The subscription is funded with LINK
+     * @notice checkUpKeep function will define when the winner is supposed to be picked
+     */
+    function checkUpKeep(
+        bytes memory /* */
+    ) public view returns (bool upkeepNeeded, bytes memory /* performData */) {
+
     }
 
     // 1. Get a random number
@@ -162,7 +178,7 @@ contract Raffle is VRFConsumerBaseV2 {
      * @dev Overrides the `fulfillRandomWords` function in the `VRFConsumerBaseV2` contract.
      *      This custom implementation performs additional logic after receiving the random number.
      *      See the original function in `VRFConsumerBaseV2.sol` for more details.
-     * @dev When the Chailink Node gets a random number, it will then call the vrfCoordinator 
+     * @dev When the Chailink Node gets a random number, it will then call the vrfCoordinator
      * @dev The vrfCoordinator will be actually calling the external function `rawFulfillRandomWords` inherited from `VRFConsumerBaseV2.sol`
      * @dev Only at this point `rawFulfillRandomWords` will call our function `fulfillRandomWords`
      * @dev We are overriding the original `fulfillRandomWords` inherited from `VRFConsumerBaseV2`.
@@ -175,25 +191,23 @@ contract Raffle is VRFConsumerBaseV2 {
     ) internal override {
         // Checks
         // In this function we don't have checks, but those would include requires, if --> revert, etc...
-        
-        // Effects 
+
+        // Effects
         uint256 indexOfWinner = randomWords[0] % s_players.length;
         address payable winner = s_players[indexOfWinner];
-        s_recentWinner = winner; 
+        s_recentWinner = winner;
         s_raffleState = RaffleState.OPEN;
 
         s_players = new address payable[](0);
-        s_lastTimeStamp= block.timestamp;
+        s_lastTimeStamp = block.timestamp;
         emit PickedWinner(winner);
 
         // Interactions
-        (bool success,) = winner.call{value: address(this).balance}("");
+        (bool success, ) = winner.call{value: address(this).balance}("");
         if (!success) {
             revert Raffle__TransferFailed();
         }
     }
-
-
 
     /** Getters */
 
